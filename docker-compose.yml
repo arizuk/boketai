@@ -1,0 +1,9 @@
+version: '2.3'
+services:
+  boketai:
+    build: .
+    runtime: nvidia
+    ports:
+      - "6006:6006"
+    volumes:
+      - .:/workspace
