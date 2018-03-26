@@ -101,14 +101,14 @@ if __name__ == '__main__':
     np.random.seed(34)
 
     train_x = load_images('data/images.v1')
-    valid_x = train_x[:100]
-    train_x = train_x[100:]
+    valid_x = train_x[:80]
+    train_x = train_x[80:]
 
     w2i, i2w = build_w2i('data/texts.v1')
     train_y = build_dataset('data/texts.v1', w2i)
     # valid_y = build_dataset('data/texts.v1', w2i)
-    valid_y = train_y[:100]
-    train_y = train_y[100:]
+    valid_y = train_y[:80]
+    train_y = train_y[80:]
 
     vocab_size = len(w2i)
 
@@ -171,7 +171,7 @@ if __name__ == '__main__':
 
     model.fit_generator(
         generator(train_x, train_y, batch_size),
-        epochs=1000,
+        epochs=400,
         steps_per_epoch=n_batches_train,
         validation_data=generator(valid_x, valid_y),
         validation_steps=n_batches_valid
