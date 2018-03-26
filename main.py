@@ -1,23 +1,21 @@
 import tensorflow as tf
-from tensorflow.python.keras.applications.vgg16 import VGG16
-from tensorflow.python.keras.layers import Input
-
 import os
 import math
 
 import numpy as np
-import matplotlib.pyplot as plt
-from keras.applications.vgg16 import VGG16
-from keras.preprocessing.sequence import pad_sequences
+# import matplotlib.pyplot as plt
+from tensorflow.python.keras.applications.vgg16 import VGG16
+from tensorflow.python.keras.preprocessing.sequence import pad_sequences
 from sklearn.model_selection import train_test_split
-from keras.models import Model
-from keras.layers import Input, Dense, Embedding, LSTM, Activation, Flatten
-from keras.optimizers import RMSprop
-from keras.utils.vis_utils import model_to_dot
-from keras.utils import np_utils
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.layers import Input, Dense, Embedding, LSTM, Activation, Flatten
+from tensorflow.python.keras.optimizers import RMSprop
+from tensorflow.python.keras._impl.keras.utils.vis_utils import model_to_dot
+from tensorflow.python.keras._impl.keras.utils import np_utils
 from IPython.display import Image, display, SVG
-from keras import backend as K
-from keras.layers import Lambda
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.layers import Lambda
+from PIL import Image
 
 def sort_data_by_length(data_x, data_y):
     data_x_lens = [len(datum) for datum in data_x]
@@ -54,67 +52,21 @@ def build_dataset(path, w2i):
 
     return data
 
-np.random.seed(34)
-emb_dim = 128
-hid_dim = 128
+def save_model(model, name):
+    data_dir = 'data'
+    if not os.path.isdir(data_dir):
+        os.makedirs(data_dir)
+    result_dir = os.path.normpath(data_dir)
+    model.save_weights(os.path.join(result_dir, name + '_model.h5'))
 
-# ファイルサイズが大きいので少し時間がかかります
-train_x = np.load('/root/userspace/public/lesson5/data/mscoco_images_9000.npy')
-valid_x = np.load('/root/userspace/public/lesson5/data/mscoco_images_1000.npy')
+def load_weight(model, name):
+    data_dir = 'data'
+    result_dir = os.path.normpath(data_dir)
+    weight_file = os.path.join(result_dir, name + '_model.h5')
+    model.load_weights(weight_file)
+    return model
 
-w2i, i2w = build_w2i('/root/userspace/public/lesson5/data/mscoco_captions_9000.txt')
-train_y = build_dataset('/root/userspace/public/lesson5/data/mscoco_captions_9000.txt', w2i)
-valid_y = build_dataset('/root/userspace/public/lesson5/data/mscoco_captions_1000.txt', w2i)
-
-vocab_size = len(w2i)
-
-# キャプションの長さでソート (理由は後述)
-train_y, train_x = sort_data_by_length(train_y, train_x)
-valid_y, valid_x = sort_data_by_length(valid_y, valid_x)
-
-
-K.clear_session()
-
-x = Input(shape=(224, 224, 3))
-encoder = VGG16(weights='imagenet', include_top=False, input_tensor=x)
-
-# パラメータを固定
-for layer in encoder.layers:
-    layer.trainable = False
-
-# CNNの出力
-u = Flatten()(encoder.output)
-
-# LSTMの初期状態
-h_0 = Dense(hid_dim)(u)
-c_0 = Dense(hid_dim)(u)
-
-# LSTMの入力
-y = Input(shape=(None,), dtype='int32')
-y_in = Lambda(lambda x: x[:, :-1])(y)
-y_out = Lambda(lambda x: x[:, 1:])(y)
-
-# 誤差関数のマスク
-mask = Lambda(lambda x: K.cast(K.not_equal(x, w2i['<pad>']), 'float32'))(y_out)
-
-# 層の定義
-embedding = Embedding(vocab_size, emb_dim)
-lstm = LSTM(hid_dim, activation='tanh', return_sequences=True, return_state=True)
-dense = Dense(vocab_size)
-softmax = Activation('softmax')
-
-# 順伝播
-y_emb = embedding(y_in)
-h, _, _ = lstm(y_emb, initial_state=[h_0, c_0]) # 第2,3戻り値(最終ステップのh, c)は無視
-h = dense(h)
-y_pred = softmax(h)
-
-def masked_cross_entropy(y_true, y_pred):
-    return -K.mean(K.sum(K.sum(y_true * K.log(K.clip(y_pred, 1e-10, 1)), axis=-1) * mask, axis=1))
-
-model = Model([x, y], y_pred)
-
-model.compile(loss=masked_cross_entropy, optimizer='rmsprop')
+    return model
 
 def generator(data_x, data_y, batch_size=32):
 
@@ -134,81 +86,134 @@ def generator(data_x, data_y, batch_size=32):
 
             yield [data_x_mb, data_y_mb], data_y_mb_oh
 
-batch_size = 32
+def load_images(file):
+    f = open(file)
+    images = []
+    for line in f:
+        path = "data/images/"  + line.rstrip()
+        img = Image.open(path)
+        img = img.resize((224, 224))
+        images.append(np.array(img))
+    f.close()
+    return np.array(images)
 
-n_batches_train = math.ceil(len(train_x) / batch_size)
-n_batches_valid = math.ceil(len(valid_x) / batch_size)
+if __name__ == '__main__':
+    np.random.seed(34)
 
-try:
+    train_x = load_images('data/images.v1')
+    valid_x = train_x[:100]
+    train_x = train_x[100:]
+
+    w2i, i2w = build_w2i('data/texts.v1')
+    train_y = build_dataset('data/texts.v1', w2i)
+    # valid_y = build_dataset('data/texts.v1', w2i)
+    valid_y = train_y[:100]
+    train_y = train_y[100:]
+
+    vocab_size = len(w2i)
+
+    # キャプションの長さでソート (理由は後述)
+    train_y, train_x = sort_data_by_length(train_y, train_x)
+    valid_y, valid_x = sort_data_by_length(valid_y, valid_x)
+
+    K.clear_session()
+
+    emb_dim = 128
+    hid_dim = 128
+    batch_size = 32
+
+    x = Input(shape=(224, 224, 3))
+    encoder = VGG16(weights='imagenet', include_top=False, input_tensor=x)
+
+    # パラメータを固定
+    for layer in encoder.layers:
+        layer.trainable = False
+
+    # CNNの出力
+    u = Flatten()(encoder.output)
+
+    # LSTMの初期状態
+    h_0 = Dense(hid_dim)(u)
+    c_0 = Dense(hid_dim)(u)
+
+    # LSTMの入力
+    y = Input(shape=(None,), dtype='int32')
+    y_in = Lambda(lambda x: x[:, :-1])(y)
+    y_out = Lambda(lambda x: x[:, 1:])(y)
+
+    # 誤差関数のマスク
+    mask = Lambda(lambda x: K.cast(K.not_equal(x, w2i['<pad>']), 'float32'))(y_out)
+
+    # 層の定義
+    embedding = Embedding(vocab_size, emb_dim)
+    lstm = LSTM(hid_dim, activation='tanh', return_sequences=True, return_state=True)
+    dense = Dense(vocab_size)
+    softmax = Activation('softmax')
+
+    # 順伝播
+    y_emb = embedding(y_in)
+    h, _, _ = lstm(y_emb, initial_state=[h_0, c_0]) # 第2,3戻り値(最終ステップのh, c)は無視
+    h = dense(h)
+    y_pred = softmax(h)
+
+    def masked_cross_entropy(y_true, y_pred):
+        return -K.mean(K.sum(K.sum(y_true * K.log(K.clip(y_pred, 1e-10, 1)), axis=-1) * mask, axis=1))
+
+    model = Model([x, y], y_pred)
+    model.compile(loss=masked_cross_entropy, optimizer='rmsprop')
+
+    # # load weight
+    # if os.path.exists('data/image2text_model.h5'):
+    #     model = load_weight(model, 'image2text')
+
+    n_batches_train = math.ceil(len(train_x) / batch_size)
+    n_batches_valid = math.ceil(len(valid_x) / batch_size)
+
     model.fit_generator(
-        generator(train_x, train_y),
+        generator(train_x, train_y, batch_size),
         epochs=1000,
         steps_per_epoch=n_batches_train,
         validation_data=generator(valid_x, valid_y),
         validation_steps=n_batches_valid
     )
-except KeyboardInterrupt:
-    pass
 
+    encoder_model = Model([x], [h_0, c_0])
 
-encoder_model = Model([x], [h_0, c_0])
+    # 入力
+    h_tm1 = Input(shape=(hid_dim,))
+    c_tm1 = Input(shape=(hid_dim,))
+    y_t = Input(shape=(1,))
 
-# 入力
-h_tm1 = Input(shape=(hid_dim,))
-c_tm1 = Input(shape=(hid_dim,))
-y_t = Input(shape=(1,))
+    # 順伝播
+    y_emb_t = embedding(y_t)
+    _, h_t, c_t = lstm(y_emb_t, initial_state=[h_tm1, c_tm1])
+    pred_t = dense(h_t)
+    pred_t = softmax(pred_t)
 
-# 順伝播
-y_emb_t = embedding(y_t)
-_, h_t, c_t = lstm(y_emb_t, initial_state=[h_tm1, c_tm1])
-pred_t = dense(h_t)
-pred_t = softmax(pred_t)
+    decoder_model = Model([y_t, h_tm1, c_tm1], [pred_t, h_t, c_t])
 
-decoder_model = Model([y_t, h_tm1, c_tm1], [pred_t, h_t, c_t])
+    def decode_sequence(x, max_len=100):
+        h_tm1, c_tm1 = encoder_model.predict(x)
+        y_tm1 = np.array([w2i['<s>']])
+        y_pred = np.array([w2i['<s>']])
 
+        while True:
+            y_t, h_t, c_t = decoder_model.predict([y_tm1, h_tm1, c_tm1])
+            y_t = np.argmax(y_t.flatten())
+            y_pred = np.append(y_pred, [y_t])
 
-def decode_sequence(x, max_len=100):
-    h_tm1, c_tm1 = encoder_model.predict(x)
-    y_tm1 = np.array([w2i['<s>']])
-    y_pred = np.array([w2i['<s>']])
+            h_tm1, c_tm1 = h_t, c_t
+            y_tm1 = y_pred[-1:]
 
-    while True:
-        y_t, h_t, c_t = decoder_model.predict([y_tm1, h_tm1, c_tm1])
-        y_t = np.argmax(y_t.flatten())
-        y_pred = np.append(y_pred, [y_t])
+            if y_pred[-1] == w2i['</s>'] or len(y_pred) > max_len:
+                break
+        return y_pred
 
-        h_tm1, c_tm1 = h_t, c_t
-        y_tm1 = y_pred[-1:]
+    test_x = np.array(valid_x[:1])
+    pred_y = decode_sequence(test_x)
+    print(' '.join([i2w[i] for i in pred_y]))
 
-        if y_pred[-1] == w2i['</s>'] or len(y_pred) > max_len:
-            break
-    return y_pred
+    # plt.imshow(test_x[0])
 
-test_x = np.array(valid_x[:1])
-
-pred_y = decode_sequence(test_x)
-
-print(' '.join([i2w[i] for i in pred_y]))
-
-plt.imshow(test_x[0])
-
-def save_model(model, name):
-    data_dir = 'data'
-    if not os.path.isdir(data_dir):
-        os.makedirs(data_dir)
-    result_dir = os.path.normpath(data_dir)
-    model.save_weights(os.path.join(result_dir, name + '_model.h5'))
-
-def load_weight(model, name):
-    data_dir = 'data'
-    result_dir = os.path.normpath(data_dir)
-    weight_file = os.path.join(result_dir, name + '_model.h5')
-    model.load_weights(weight_file)
-    return model
-
-# save model
-save_model(model, 'image2text')
-
-# load weight
-if os.path.exists('data/image2text_model.h5'):
-    model = load_weight(model, 'image2text')
+    # save model
+    save_model(model, 'image2text')
