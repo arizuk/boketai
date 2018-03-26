@@ -1,9 +1,14 @@
 version: '2.3'
 services:
   boketai:
-    build: .
+    build: docker/boketai
     runtime: nvidia
     ports:
       - "6006:6006"
+    volumes:
+      - .:/workspace
+      - /mnt/storage:/storage
+  knp:
+    build: docker/knp
     volumes:
       - .:/workspace
